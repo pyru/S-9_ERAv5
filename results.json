@@ -1,0 +1,74 @@
+{
+  "1_rows": 60,
+  "1_shapes": {
+    "tokens": [
+      4,
+      16
+    ],
+    "hidden": [
+      4,
+      16,
+      256
+    ],
+    "logits": [
+      4,
+      16,
+      50257
+    ],
+    "pred_logits": [
+      4,
+      15,
+      50257
+    ],
+    "targets": [
+      4,
+      15
+    ],
+    "flat_logits": [
+      60,
+      50257
+    ],
+    "flat_targets": [
+      60
+    ]
+  },
+  "2_offset_ok": true,
+  "2_mismatches": 0,
+  "3_tokens_unmasked": 24,
+  "3_tokens_masked": 18,
+  "3_loss_unmasked": 7.3775,
+  "3_loss_masked": 5.2811,
+  "4_loss_with_boundary": 8.867,
+  "4_loss_without_boundary": 8.6823,
+  "4_boundary_token_loss": 13.4828,
+  "4agg_n_seams": 47,
+  "4agg_seam_mean": 9.208,
+  "4agg_interior_mean": 5.8235,
+  "4agg_loss_with": 5.8591,
+  "4agg_loss_without": 5.8235,
+  "5_ln_vocab": 10.8249,
+  "5_untrained_loss": 10.8574,
+  "5_untrained_ppl": 51917.5,
+  "5_ppl_over_vocab": 1.033,
+  "5_buggy_ppl": "1.665e+73",
+  "5_trained_ppl": 251.4,
+  "6_tied_params": 16058112,
+  "6_untied_params": 28923904,
+  "6_delta_params": 12865792,
+  "7_grad_max_diff": "2.10e-09",
+  "7_peak_ordinary_mb": 639.03,
+  "7_peak_chunked_mb": 124.77,
+  "7_ratio": 5.12,
+  "7_measurement": "TorchDispatchMode live-byte high-water mark",
+  "P2_loss_next": 5.8013,
+  "P2_loss_skip": 6.0979,
+  "P2_loss_sum": 11.8992,
+  "P2_gap_first20": -0.0325,
+  "P2_gap_last20": 0.2966,
+  "P3_final_correct": 6.3608,
+  "P3_final_noshift": 2.7315,
+  "P3_final_backwards": 6.2157,
+  "P3_true_correct": 6.1375,
+  "P3_true_noshift": 8.3537,
+  "P3_true_backwards": 7.1036
+}

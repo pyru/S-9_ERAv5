@@ -1,0 +1,382 @@
+torch      : 2.11.0+cpu
+device     : cpu
+cpu threads: 8
+C:\Users\Admin\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\site-packages\tqdm\auto.py:21: TqdmWarning: IProgress not found. Please update jupyter and ipywidgets. See https://ipywidgets.readthedocs.io/en/stable/user_install.html
+  from .autonotebook import tqdm as notebook_tqdm
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+vocab_size : 50257
+pad id     : 50256  -> <|endoftext|>
+
+sanity, one tokenized line:
+  ids    : [464, 2068, 7586, 21831, 198, 73, 8142, 13]
+  strings: ['The', '␣quick', '␣brown', '␣fox', '⏎', 'j', 'umps', '.']
+downloaded tinyshakespeare : 1,115,394 chars
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (338025 > 1024). Running this sequence through the model will result in indexing errors
+corpus tokens              : 338,025
+trunk params (head tied to tok_emb): 16.06M
+  ref step   0  loss 10.8533
+  ref step  20  loss  8.5928
+  ref step  40  loss  7.0012
+  ref step  60  loss  6.6204
+  ref step  80  loss  6.1917
+  ref step 100  loss  6.0709
+  ref step 120  loss  6.1748
+  ref step 140  loss  6.1223
+  ref step 160  loss  6.2764
+  ref step 180  loss  5.9165
+  ref step 200  loss  5.9568
+  ref step 220  loss  5.8270
+  ref step 240  loss  5.5834
+  ref step 249  loss  5.5927
+reference model trained in 306.6s (10.853 -> 5.593)
+
+tokens        (4, 16)             (B=4 sequences in the batch, T=16 token positions per sequence)
+hidden        (4, 16, 256)        (B=4 sequences, T=16 positions, D=256 residual-stream channels per position)
+logits        (4, 16, 50257)      (B=4 sequences, T=16 positions, V=50257 unnormalised scores, one per vocab entry)
+pred_logits   (4, 15, 50257)      (B=4, T-1=15 positions that HAVE a next token in-window, V=50257)
+targets       (4, 15)             (B=4, T-1=15 next-token labels, target[b,i] is the token that follows tokens[b,i])
+flat_logits   (60, 50257)         (N=B*(T-1)=60 independent predictions, V=50257 classes each)
+flat_targets  (60,)               (N=60 class indices, one integer per prediction)
+
+rows fed to cross_entropy: 60  = B*(T-1) = 4*15   [logits rows == target rows: OK]
+shift = +1  (CORRECT: predict the NEXT token)
+
+ pos  INPUT  logits row i reads this      TARGET  must predict this     
+--------------------------------------------------------------------------
+   0  'IL'                                'IA'                          
+   1  'IA'                                ':'                           
+   2  ':'                                 '⏎'                           
+   3  '⏎'                                 'B'                           
+   4  'B'                                 'es'                          
+   5  'es'                                'ee'                          
+   6  'ee'                                'ch'                          
+   7  'ch'                                '␣you'                        
+   8  '␣you'                              ','                           
+   9  ','                                 '␣give'                       
+  10  '␣give'                             '␣me'                         
+  11  '␣me'                               '␣leave'                      
+  12  '␣leave'                            '␣to'                         
+  13  '␣to'                               '␣retire'                     
+--------------------------------------------------------------------------
+target[i] == input[i+1] for every row : True
+mismatches found                      : 0
+
+reconstructed from the INPUT column : 'ILIA:⏎Beseech␣you,␣give␣me␣leave␣to␣retire'
+reconstructed from the TARGET column: 'IA:⏎Beseech␣you,␣give␣me␣leave␣to␣retire␣myself'
+
+-> the target column is the input column slid one row up. That is the shift, verified on text.
+batch shape (B=2 docs, T=13 padded positions): (2, 13)
+row 0 real tokens: 13,  row 1 real tokens: 7 -> 6 pad slots on row 1
+
+row 1 as strings: ['All', '␣the', '␣world', '␣is', '␣a', '␣stage', '.', '<|endoftext|>', '<|endoftext|>', '<|endoftext|>', '<|endoftext|>', '<|endoftext|>', '<|endoftext|>']
+
+contributing tokens WITHOUT mask : 24   (= B*(T-1) = 2*12)
+contributing tokens WITH    mask : 18   (6 pad targets dropped)
+
+loss WITHOUT mask : 7.3775   <- averaged over 24 rows, 6 of which are pad->pad
+loss WITH    mask : 5.2811   <- averaged over 18 real rows
+
+The denominator changed, so the number changed. Here the pad positions drag the reported loss UP
+by 2.0963 nats, because this model was never trained on <|endoftext|> and finds it
+hard to predict. A model that saw pads often would find them trivial and be dragged the other way.
+Only the masked number is the loss on the task we care about.
+packed shape (B=1 sequence, T=27 positions): (1, 27)
+doc A occupies positions 0..14, doc B occupies 15..26
+
+the neighbourhood of the seam (prediction rows):
+ row  INPUT             TARGET          
+------------------------------------------
+  12  '␣afternoon'      '␣sun'          
+  13  '␣sun'            '.'             
+  14  '.'               'Qu'               <== BOUNDARY: last token of A -> first token of B
+  15  'Qu'              'arter'         
+  16  'arter'           'ly'            
+
+contributing tokens WITH boundary    : 26
+contributing tokens WITHOUT boundary : 25
+
+loss WITH    boundary : 8.8670
+loss WITHOUT boundary : 8.6823
+difference            : +0.1846
+
+the boundary pair alone costs 13.4828 nats (vs 8.6823 average elsewhere)
+reconciliation: (sum - boundary)/(N-1) = 8.6823  == masked loss 8.6823
+usable documents in corpus: 2448
+built 47 packed sequences of 96 tokens, one document seam in each
+
+positions                      count     mean loss
+----------------------------------------------------
+document seams                    47        9.2080
+everywhere else                 4418        5.8235
+----------------------------------------------------
+seam positions cost +3.3846 nats more than ordinary positions (1.58x)
+100% of individual seams score above the interior mean
+
+loss over all positions      (seams INCLUDED) : 5.8591
+loss with seams masked out   (seams EXCLUDED) : 5.8235
+difference                                    : +0.0356
+target: an untrained model should sit at loss ln(V) = 10.8249, perplexity ~ V = 50257
+
+[BUGGY  default init ] loss  168.5983   perplexity 1.665e+73   ratio to V: 3.312e+68
+        -> perplexity is astronomically above V. Something is wrong; do NOT train this.
+        -> cause: nn.Embedding defaults to N(0,1); tied logits h @ E.T blow up.
+
+[FIXED  std=0.02 init] loss   10.8574   perplexity   51917.5   ratio to V: 1.0330
+        -> ln(V) = 10.8249, measured 10.8574; perplexity 51917.5 vs V = 50257. The harness is trustworthy.
+
+[trained 250 steps    ] loss    5.5269   perplexity     251.4   ratio to V: 0.0050
+config: V=50257, D=256, layers=4, heads=4, block=128
+
+head weight is the same object as tok_emb.weight (tied) : True
+head weight is the same object as tok_emb.weight (untied): False
+
+tied   total parameters :   16,058,112  (16.06M)
+untied total parameters :   28,923,904  (28.92M)
+difference              :   12,865,792  (= V*D = 50257*256 = 12,865,792)
+untied is 1.80x the tied model; the extra matrix alone is 44.5% of the untied total
+
+for scale: the transformer blocks are only 3,159,040 parameters (19.7% of the tied model). At this size the model is mostly vocabulary.
+ordinary loss : 10.84114742
+chunked  loss : 10.84114742
+|dloss|       : 0.000e+00
+max |d grad_hidden| : 9.459e-11
+max |d grad_weight| : 2.095e-09
+
+-> same loss, same gradients. Now we can talk about memory.
+measurement config: B=4, T=256, D=256, V=50257, chunks=16
+a full (B,T,V) fp32 logits tensor is 4*256*50257*4 bytes = 196.3 MB
+one chunk of logits is 12.3 MB
+
+ordinary cross entropy : peak   639.03 MB   (loss 10.8411)
+chunked  cross entropy : peak   124.77 MB   (loss 10.8411)
+
+ratio ordinary/chunked : 5.12x   (saved 514.3 MB, 80.5%)
+
+The floor for the chunked version is grad_weight, which is V*D*4 = 49.1 MB and cannot be chunked away - it is a real parameter gradient. Everything above that floor is logits, and that is what chunking removes.
+trunk        : 16,058,112 params
+head_next    : tied to tok_emb, 0 extra params
+head_skip    : 12,865,792 extra params
+
+  step   0  loss_next 10.8810   loss_skip 10.8630   sum 21.7440   gap -0.0180
+  step  20  loss_next  8.6412   loss_skip  8.6106   sum 17.2518   gap -0.0306
+  step  40  loss_next  7.2014   loss_skip  7.1742   sum 14.3756   gap -0.0272
+  step  60  loss_next  6.5123   loss_skip  6.6069   sum 13.1191   gap +0.0946
+  step  80  loss_next  6.4478   loss_skip  6.5642   sum 13.0120   gap +0.1164
+  step 100  loss_next  6.3156   loss_skip  6.4522   sum 12.7678   gap +0.1366
+  step 120  loss_next  6.0561   loss_skip  6.2437   sum 12.2998   gap +0.1876
+  step 140  loss_next  6.3561   loss_skip  6.5704   sum 12.9265   gap +0.2143
+  step 160  loss_next  6.0289   loss_skip  6.2735   sum 12.3024   gap +0.2446
+  step 180  loss_next  5.8322   loss_skip  6.0484   sum 11.8806   gap +0.2162
+  step 200  loss_next  5.8377   loss_skip  6.1197   sum 11.9574   gap +0.2820
+  step 219  loss_next  5.9620   loss_skip  6.3040   sum 12.2660   gap +0.3420
+
+trained 220 steps in 418.1s
+                         loss_next (t+1)   loss_skip (t+2)       gap
+--------------------------------------------------------------------
+first 20 steps                    9.7376            9.7052   -0.0325
+last 20 steps                     5.8013            6.0979   +0.2966
+perplexity (last)                  330.7             444.9
+
+sum of the two losses (last 20 steps): 11.8992
+total drop: next 3.9364 nats, skip 3.6073 nats
+training delta = +1  correct
+    step   0  loss 10.8533
+    step  30  loss  7.7025
+    step  60  loss  6.6204
+    step  90  loss  6.1271
+    step 119  loss  6.3608
+  -> final loss 6.3608
+
+training delta =  0  no shift
+    step   0  loss 10.5824
+    step  30  loss  6.9678
+    step  60  loss  4.8127
+    step  90  loss  3.1844
+    step 119  loss  2.7315
+  -> final loss 2.7315
+
+training delta = -1  backwards
+    step   0  loss 10.8578
+    step  30  loss  7.7235
+    step  60  loss  6.6542
+    step  90  loss  6.0864
+    step 119  loss  6.2157
+  -> final loss 6.2157
+
+delta = +1  correct    final reported loss   6.3608   perplexity    578.712
+delta =  0  no shift   final reported loss   2.7315   perplexity     15.356
+delta = -1  backwards  final reported loss   6.2157   perplexity    500.525
+
+The lowest reported loss belongs to '0  no shift'. Both broken variants report a LOWER
+loss than the correct one. If the reported curve were your only instrument, you would
+rank them above the run that is actually working.
+==========================================================================
+delta = +1  correct
+
+ pos  INPUT  logits row i reads this      TARGET  must predict this     
+--------------------------------------------------------------------------
+   0  ','                                 '␣that'                       
+   1  '␣that'                             '␣Romeo'                      
+   2  '␣Romeo'                            "'s"                          
+   3  "'s"                                '␣faithful'                   
+   4  '␣faithful'                         '␣wife'                       
+   5  '␣wife'                             ':'                           
+   6  ':'                                 '⏎'                           
+  -> every target is a token the model has NOT been shown. Real prediction.
+
+==========================================================================
+delta =  0  no shift
+
+ pos  INPUT  logits row i reads this      TARGET  must predict this     
+--------------------------------------------------------------------------
+   0  ','                                 ','                             <-- IDENTICAL
+   1  '␣that'                             '␣that'                         <-- IDENTICAL
+   2  '␣Romeo'                            '␣Romeo'                        <-- IDENTICAL
+   3  "'s"                                "'s"                            <-- IDENTICAL
+   4  '␣faithful'                         '␣faithful'                     <-- IDENTICAL
+   5  '␣wife'                             '␣wife'                         <-- IDENTICAL
+   6  ':'                                 ':'                             <-- IDENTICAL
+  -> the target IS the input. The model reads token i and is graded on token i.
+     Copying is cheap, so the reported loss drops below the correct run's.
+     The model does learn - it just learns to copy, which is not the task.
+
+==========================================================================
+delta = -1  backwards
+
+ pos  INPUT  logits row i reads this      TARGET  must predict this     
+--------------------------------------------------------------------------
+   0  '␣that'                             ','                           
+   1  '␣Romeo'                            '␣that'                       
+   2  "'s"                                '␣Romeo'                      
+   3  '␣faithful'                         "'s"                          
+   4  '␣wife'                             '␣faithful'                   
+   5  ':'                                 '␣wife'                       
+   6  '⏎'                                 ':'                           
+  -> the target is the PREVIOUS token, which the model already attended to.
+     Copying is cheap, so the reported loss drops below the correct run's.
+     The model does learn - it just learns to copy, which is not the task.
+
+variant            reported loss    TRUE next-token loss    true ppl
+----------------------------------------------------------------------
++1  correct               6.3608                  6.1375       462.9
+ 0  no shift              2.7315                  8.3537      4246.0
+-1  backwards             6.2157                  7.1036      1216.3
+----------------------------------------------------------------------
+untrained ref                  -                 10.8574     51917.5
+
+ln(V) = 10.8249 (untrained = 10.8574).
+  0  no shift   reported  2.7315 but is +2.2162 nats WORSE than the correct run on the real task.
+  -1  backwards reported  6.2157 but is +0.9660 nats WORSE than the correct run on the real task.
+
+Both broken runs did learn something - they beat the untrained model - but they learned
+the wrong task, and their reported loss cannot tell you that. Only this column can.
+{
+  "1_rows": 60,
+  "1_shapes": {
+    "tokens": [
+      4,
+      16
+    ],
+    "hidden": [
+      4,
+      16,
+      256
+    ],
+    "logits": [
+      4,
+      16,
+      50257
+    ],
+    "pred_logits": [
+      4,
+      15,
+      50257
+    ],
+    "targets": [
+      4,
+      15
+    ],
+    "flat_logits": [
+      60,
+      50257
+    ],
+    "flat_targets": [
+      60
+    ]
+  },
+  "2_offset_ok": true,
+  "2_mismatches": 0,
+  "3_tokens_unmasked": 24,
+  "3_tokens_masked": 18,
+  "3_loss_unmasked": 7.3775,
+  "3_loss_masked": 5.2811,
+  "4_loss_with_boundary": 8.867,
+  "4_loss_without_boundary": 8.6823,
+  "4_boundary_token_loss": 13.4828,
+  "4agg_n_seams": 47,
+  "4agg_seam_mean": 9.208,
+  "4agg_interior_mean": 5.8235,
+  "4agg_loss_with": 5.8591,
+  "4agg_loss_without": 5.8235,
+  "5_ln_vocab": 10.8249,
+  "5_untrained_loss": 10.8574,
+  "5_untrained_ppl": 51917.5,
+  "5_ppl_over_vocab": 1.033,
+  "5_buggy_ppl": "1.665e+73",
+  "5_trained_ppl": 251.4,
+  "6_tied_params": 16058112,
+  "6_untied_params": 28923904,
+  "6_delta_params": 12865792,
+  "7_grad_max_diff": "2.10e-09",
+  "7_peak_ordinary_mb": 639.03,
+  "7_peak_chunked_mb": 124.77,
+  "7_ratio": 5.12,
+  "7_measurement": "TorchDispatchMode live-byte high-water mark",
+  "P2_loss_next": 5.8013,
+  "P2_loss_skip": 6.0979,
+  "P2_loss_sum": 11.8992,
+  "P2_gap_first20": -0.0325,
+  "P2_gap_last20": 0.2966,
+  "P3_final_correct": 6.3608,
+  "P3_final_noshift": 2.7315,
+  "P3_final_backwards": 6.2157,
+  "P3_true_correct": 6.1375,
+  "P3_true_noshift": 8.3537,
+  "P3_true_backwards": 7.1036
+}
+
+==============================================================================
+PART 1 - THE SEVEN NUMBERS
+==============================================================================
+  1. shapes                  logits (4, 16, 50257) -> 60 rows x 50257 classes fed to CE
+  2. shift on strings        target[i]==input[i+1] on every row: True, mismatches 0
+  3. padding mask            contributing tokens 24 -> 18   (loss 7.3775 -> 5.2811)
+  4. packing boundary        over 47 seams: loss 5.8591 -> 5.8235   (seam positions 9.208 vs interior 5.8235)
+  5. untrained perplexity    51917.5 vs V=50257  (ratio 1.033, loss 10.8574 vs ln V 10.8249)
+  6. tied vs untied          16,058,112 vs 28,923,904   (+12,865,792 = V*D)
+  7. peak memory             639.03 MB ordinary vs 124.77 MB chunked   = 5.12x
+
+==============================================================================
+PART 2 - TWO HEADS
+==============================================================================
+  loss_next (t+1)  5.8013
+  loss_skip (t+2)  6.0979
+  sum              11.8992
+  gap              -0.0325 (first 20 steps) -> +0.2966 (last 20): the gap WIDENS
+
+==============================================================================
+PART 3 - THE WRONG-DIRECTION SHIFT
+==============================================================================
+  variant             reported   true next-token
+  +1 correct            6.3608            6.1375
+   0 no shift           2.7315            8.3537
+  -1 backwards          6.2157            7.1036
+
+  no-shift   reports 2.7315, which is BELOW the correct run's 6.3608 -> looks as good or better,
+             but its TRUE next-token loss is 8.3537 vs 6.1375, +2.2162 worse.
+
+  backwards  reports 6.2157, which is BELOW the correct run's 6.3608 -> looks as good or better,
+             but its TRUE next-token loss is 7.1036 vs 6.1375, +0.9661 worse.
+
+  Both broken runs are still better than untrained (10.86) - they did learn something,
+  just not the task. Only the true-loss column separates them. Print the strings.
